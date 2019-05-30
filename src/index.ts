@@ -3,22 +3,44 @@
 import * as THREE from 'three'
 import * as rx from 'rxjs'
 
+import { Observable } from 'rxjs';
+import { sample, map, startWith } from 'rxjs/operators';
+
 import vertexShader from './shaders/vertex.glsl'
 import fragmentShader from './shaders/fragment.glsl'
 
 import { createShadowHullMesh } from './shadowHull'
 
+
+type UnpackedObservable<T> = T extends Observable<infer U> ? U : never;
+type CBLRes<T> = Observable<{ [P in keyof T]: UnpackedObservable<T[P]> }> ;
+type CBLInput = { [key: string]: Observable<any> };
+
+function combineLatestObject<T extends CBLInput>(source: T): CBLRes<T> {
+    var keys = Object.keys(source);
+    return <CBLRes<T>> rx.combineLatest(Object.values(source))
+        .pipe(
+            map(
+                values => values.reduce((acc, value, index) => ({
+                    ...acc, [keys[index]]: value
+                }), {})
+            )
+        );
+}
+
 init();
 
 function init() {
     
+    // camera
     var camera = new THREE.OrthographicCamera(-10, 10, 10, -10);
     camera.position.z = 1000;
 
+    // scene
     var scene = new THREE.Scene();
     scene.background = new THREE.Color( 0xeeeeee );
 
-    var material = new THREE.ShaderMaterial({
+    var shadowHullMaterial = new THREE.ShaderMaterial({
         vertexShader: vertexShader,
         fragmentShader: fragmentShader
     });
@@ -30,7 +52,8 @@ function init() {
             new THREE.Vector2(-0.5,  0.5),
         ]);
 
-    var mesh = new THREE.Mesh( geometry, material );
+    var mesh = new THREE.Mesh( geometry, shadowHullMaterial );
+
     scene.add( mesh );
     
     var renderer = new THREE.WebGLRenderer( { antialias: false } );
@@ -38,23 +61,23 @@ function init() {
     renderer.setSize( window.innerWidth, window.innerHeight );
 
     document.body.appendChild( renderer.domElement );
-    
+
     window.addEventListener('resize', onWindowResize, false);
 
-    var animationInput =
-        rx.combineLatest(
-            rx.interval(0, rx.animationFrameScheduler),
-            rx.fromEvent<MouseEvent>(document, "mousemove"),
-            rx.animationFrameScheduler
-        )
-        .subscribe(animate);
+    combineLatestObject({
+        mouse: rx.fromEvent<MouseEvent>(document, "mousemove")
+    })
+    .pipe(
+        sample(rx.interval(0, rx.animationFrameScheduler))
+    )
+    .subscribe(animate);
 
     function onWindowResize() {
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
     
-    function animate([, mouse]: [number, MouseEvent]) {
+    function animate({ mouse }: { mouse: MouseEvent }) {
         var rect = renderer.domElement.getBoundingClientRect()
         var pos = new THREE.Vector3(
             ((mouse.x - rect.left) / rect.width) * 2 - 1,
@@ -64,7 +87,7 @@ function init() {
     
         var lightPosition = pos.unproject(camera)
     
-        material.uniforms['light_position'] = { value: lightPosition };
+        shadowHullMaterial.uniforms['light_position'] = { value: lightPosition };
     
         renderer.render(scene, camera);
     }
