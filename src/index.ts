@@ -19,13 +19,11 @@ type CBLInput = { [key: string]: Observable<any> };
 function combineLatestObject<T extends CBLInput>(source: T): CBLRes<T> {
     var keys = Object.keys(source);
     return <CBLRes<T>> rx.combineLatest(Object.values(source))
-        .pipe(
-            map(
-                values => values.reduce((acc, value, index) => ({
-                    ...acc, [keys[index]]: value
-                }), {})
-            )
-        );
+        .pipe(map(
+            values => values.reduce((acc, value, index) => ({
+                ...acc, [keys[index]]: value
+            }), {})
+        ));
 }
 
 init();
@@ -70,14 +68,14 @@ function init() {
     .pipe(
         sample(rx.interval(0, rx.animationFrameScheduler))
     )
-    .subscribe(animate);
+    .subscribe(update);
 
     function onWindowResize() {
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
     
-    function animate({ mouse }: { mouse: MouseEvent }) {
+    function update({ mouse }: { mouse: MouseEvent }) {
         var rect = renderer.domElement.getBoundingClientRect()
         var pos = new THREE.Vector3(
             ((mouse.x - rect.left) / rect.width) * 2 - 1,
